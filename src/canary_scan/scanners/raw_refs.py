@@ -26,10 +26,51 @@ from canary_scan.lib.config import Bucket, Severity
 from canary_scan.lib.io import write_jsonl
 from canary_scan.lib.models import FileRecord, Finding, make_info_finding
 from canary_scan.lib.runners import RunLogger
-from canary_scan.scanners.remote_refs import _scan_raw_text
+from canary_scan.scanners.remote_refs import FTP_RE, URL_RE, _clean_url
 
 SMALL_FILE_THRESHOLD = 20 * 1024 * 1024  # files at or below this size are read in full
 HEAD_TAIL_CHUNK = 5 * 1024 * 1024  # bytes read from each end of larger files
+
+
+def _scan_raw_refs_text(rec: FileRecord, text: str) -> list[Finding]:
+    # Deliberately narrower than remote_refs._scan_raw_text: real-world testing against
+    # a binary media library showed UNC_RE (\\server\share) matching pure coincidence in
+    # compressed audio payload bytes (e.g. "\\k\m", "\\x\.H") -- short, generic-looking
+    # "paths" with no relation to an actual network share. Random binary noise can't
+    # coincidentally spell "https?://" or "ftp://" (7-8 specific ASCII bytes in a row),
+    # but it CAN coincidentally match the much shorter/looser UNC pattern, and worse, the
+    # report stage's uniqueness heuristic then treats each distinct piece of noise as a
+    # signal (unique-per-file "canary") and escalates it to critical. So UNC detection is
+    # intentionally left out of this stage; URL/FTP only.
+    findings: list[Finding] = []
+    for url in URL_RE.findall(text):
+        cleaned, is_canary = _clean_url(url)
+        if not cleaned:
+            continue
+        if is_canary:
+            findings.append(
+                Finding.from_file_record(
+                    rec, "raw-refs", "active_url", "canarytoken",
+                    f"Canarytoken detected: {cleaned}", cleaned, "raw-refs", Severity.CRITICAL, 1.0,
+                )
+            )
+        else:
+            findings.append(
+                Finding.from_file_record(
+                    rec, "raw-refs", "active_url", "raw_content",
+                    f"{rec.bucket.upper()} references external URL: {cleaned}", cleaned, "raw-refs",
+                    Severity.HIGH, 0.6,
+                )
+            )
+    for ftp in FTP_RE.findall(text):
+        findings.append(
+            Finding.from_file_record(
+                rec, "raw-refs", "active_url", "raw_content_ftp",
+                f"{rec.bucket.upper()} references external FTP path: {ftp}", ftp, "raw-refs",
+                Severity.HIGH, 0.6,
+            )
+        )
+    return findings
 
 
 def _read_scan_regions(path: str) -> str:
@@ -59,14 +100,7 @@ def _process_raw_refs_record(rec: FileRecord, logger: RunLogger) -> list[Finding
         text = _read_scan_regions(rec.path)
         if not text:
             return []
-        return _scan_raw_text(
-            rec,
-            text,
-            tool="raw-refs",
-            subcategory="raw_content",
-            severity=Severity.HIGH,
-            confidence=0.6,
-        )
+        return _scan_raw_refs_text(rec, text)
     except Exception as e:
         logger.log(f"Stage raw-refs: error on {rec.path}: {e}")
         return [make_info_finding(rec, "raw-refs", f"raw-refs stage error: {e}")]

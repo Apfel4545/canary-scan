@@ -23,6 +23,8 @@ BENIGN_DOMAINS = {
     "ietf.org",
     "schema.org",
     "xml.org",
+    "sf.net",  # lame.sf.net: LAME encoder homepage, embedded by default in the ID3
+    # "Encoder" tag of virtually every LAME-encoded MP3 -- not a tracking link.
 }
 
 SEVERITY_RANK_ORDER = ["critical", "high", "medium", "low", "info"]

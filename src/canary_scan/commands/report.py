@@ -54,7 +54,7 @@ def run_report_logic(
     denylist: Path | None = None,
 ) -> dict[str, int]:
     all_findings: list[Finding] = []
-    for stage in ("inventory", "metadata", "remote-refs", "embedded", "stego", "uniqueness"):
+    for stage in ("inventory", "metadata", "remote-refs", "raw-refs", "embedded", "stego", "uniqueness"):
         artefact = outdir / STAGE_ARTEFACTS[stage]
         all_findings.extend(read_jsonl(artefact))
 
