@@ -32,13 +32,16 @@ SMALL_FILE_THRESHOLD = 20 * 1024 * 1024  # files at or below this size are read 
 HEAD_TAIL_CHUNK = 5 * 1024 * 1024  # bytes read from each end of larger files
 
 
-def _truncate_at_control_char(s: str) -> str:
+def _truncate_at_binary_noise(s: str) -> str:
     # URL_RE has no upper bound on trailing characters besides whitespace/quotes/brackets,
     # so inside raw ID3/atom binary data it happily swallows the NUL-byte padding and the
     # next frame's ID (e.g. "https://tracker.com/me\x00TDRC...") into the match. A URL
-    # never legitimately contains a C0 control character, so cut there.
+    # never legitimately contains a C0 control character, so cut there. Non-UTF8 binary
+    # bytes decode to U+FFFD (the replacement character) rather than a control character,
+    # so cut there too -- otherwise two unrelated readable fragments either side of a
+    # run of raw binary bytes (frame sizes, flags, ...) can merge into one bogus "URL".
     for i, ch in enumerate(s):
-        if ord(ch) < 0x20:
+        if ord(ch) < 0x20 or ch == "\ufffd":
             return s[:i]
     return s
 
@@ -55,7 +58,7 @@ def _scan_raw_refs_text(rec: FileRecord, text: str) -> list[Finding]:
     # intentionally left out of this stage; URL/FTP only.
     findings: list[Finding] = []
     for raw_url in URL_RE.findall(text):
-        cleaned, is_canary = _clean_url(_truncate_at_control_char(raw_url))
+        cleaned, is_canary = _clean_url(_truncate_at_binary_noise(raw_url))
         if not cleaned:
             continue
         if is_canary:
@@ -74,7 +77,7 @@ def _scan_raw_refs_text(rec: FileRecord, text: str) -> list[Finding]:
                 )
             )
     for raw_ftp in FTP_RE.findall(text):
-        ftp = _truncate_at_control_char(raw_ftp)
+        ftp = _truncate_at_binary_noise(raw_ftp)
         if not ftp:
             continue
         findings.append(
@@ -103,7 +106,10 @@ def _read_scan_regions(path: str) -> str:
                 head = f.read(HEAD_TAIL_CHUNK)
                 f.seek(max(size - HEAD_TAIL_CHUNK, 0))
                 tail = f.read(HEAD_TAIL_CHUNK)
-                raw = head + tail
+                # NUL separator: without it, a fragment truncated mid-match at the head
+                # cutoff could otherwise merge with whatever the tail happens to start
+                # with, producing a bogus "URL" that never existed in the file.
+                raw = head + b"\x00" + tail
         return raw.decode("utf-8", errors="replace")
     except OSError:
         return ""
