@@ -32,6 +32,17 @@ SMALL_FILE_THRESHOLD = 20 * 1024 * 1024  # files at or below this size are read 
 HEAD_TAIL_CHUNK = 5 * 1024 * 1024  # bytes read from each end of larger files
 
 
+def _truncate_at_control_char(s: str) -> str:
+    # URL_RE has no upper bound on trailing characters besides whitespace/quotes/brackets,
+    # so inside raw ID3/atom binary data it happily swallows the NUL-byte padding and the
+    # next frame's ID (e.g. "https://tracker.com/me\x00TDRC...") into the match. A URL
+    # never legitimately contains a C0 control character, so cut there.
+    for i, ch in enumerate(s):
+        if ord(ch) < 0x20:
+            return s[:i]
+    return s
+
+
 def _scan_raw_refs_text(rec: FileRecord, text: str) -> list[Finding]:
     # Deliberately narrower than remote_refs._scan_raw_text: real-world testing against
     # a binary media library showed UNC_RE (\\server\share) matching pure coincidence in
@@ -43,8 +54,8 @@ def _scan_raw_refs_text(rec: FileRecord, text: str) -> list[Finding]:
     # signal (unique-per-file "canary") and escalates it to critical. So UNC detection is
     # intentionally left out of this stage; URL/FTP only.
     findings: list[Finding] = []
-    for url in URL_RE.findall(text):
-        cleaned, is_canary = _clean_url(url)
+    for raw_url in URL_RE.findall(text):
+        cleaned, is_canary = _clean_url(_truncate_at_control_char(raw_url))
         if not cleaned:
             continue
         if is_canary:
@@ -62,7 +73,10 @@ def _scan_raw_refs_text(rec: FileRecord, text: str) -> list[Finding]:
                     Severity.HIGH, 0.6,
                 )
             )
-    for ftp in FTP_RE.findall(text):
+    for raw_ftp in FTP_RE.findall(text):
+        ftp = _truncate_at_control_char(raw_ftp)
+        if not ftp:
+            continue
         findings.append(
             Finding.from_file_record(
                 rec, "raw-refs", "active_url", "raw_content_ftp",
