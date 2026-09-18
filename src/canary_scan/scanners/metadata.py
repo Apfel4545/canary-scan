@@ -205,13 +205,19 @@ def _process_record(rec: FileRecord, logger: RunLogger) -> tuple[str, dict | Non
                     )
 
         for key, value in fields.items():
-            if key in PII_FIELDS:
+            # exiftool -G prefixes every key with its group ("XMP:Author", "ID3:Comment",
+            # "PDF:Producer", ...). PII_FIELDS/SUSPICIOUS_FIELDS/URL_PATTERN_FIELDS list bare
+            # tag names, so matching against `key` directly almost never fired -- confirmed via
+            # `exiftool -a -G -j -n` on a real file, every key came back group-prefixed. Match
+            # against the bare tag name instead; which group it lives in doesn't matter here.
+            bare_key = key.rsplit(":", 1)[-1]
+            if bare_key in PII_FIELDS:
                 findings.append(
                     Finding.from_file_record(
                         rec,
                         stage="metadata",
                         category="metadata_pii",
-                        subcategory=key.lower(),
+                        subcategory=bare_key.lower(),
                         finding=f"Metadata field {key} contains potential PII",
                         evidence=str(value)[:500],
                         tool="exiftool",
@@ -219,13 +225,13 @@ def _process_record(rec: FileRecord, logger: RunLogger) -> tuple[str, dict | Non
                         confidence=0.6,
                     )
                 )
-            if key in SUSPICIOUS_FIELDS:
+            if bare_key in SUSPICIOUS_FIELDS:
                 findings.append(
                     Finding.from_file_record(
                         rec,
                         stage="metadata",
                         category="metadata_unique",
-                        subcategory=key.lower(),
+                        subcategory=bare_key.lower(),
                         finding=f"Metadata field {key} may contain a per-recipient unique identifier",
                         evidence=str(value)[:500],
                         tool="exiftool",
@@ -235,13 +241,13 @@ def _process_record(rec: FileRecord, logger: RunLogger) -> tuple[str, dict | Non
                 )
             val_str = str(value).lower()
             if "http://" in val_str or "https://" in val_str:
-                if key in URL_PATTERN_FIELDS:
+                if bare_key in URL_PATTERN_FIELDS:
                     findings.append(
                         Finding.from_file_record(
                             rec,
                             stage="metadata",
                             category="active_url",
-                            subcategory=key.lower(),
+                            subcategory=bare_key.lower(),
                             finding=f"Metadata field {key} contains a URL",
                             evidence=str(value)[:500],
                             tool="exiftool",
