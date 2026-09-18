@@ -14,11 +14,12 @@ LOCK_FILE = "canary-scan.lock"
 LOG_FILE = "canary-scan.log"
 STATE_FILE = "canary-scan-state.json"
 
-STAGE_NAMES = ["inventory", "metadata", "remote-refs", "embedded", "stego", "uniqueness", "report"]
+STAGE_NAMES = ["inventory", "metadata", "remote-refs", "raw-refs", "embedded", "stego", "uniqueness", "report"]
 STAGE_ARTEFACTS = {
     "inventory": "canary-scan-inventory.json",
     "metadata": "canary-scan-metadata.json",
     "remote-refs": "canary-scan-remote-refs.json",
+    "raw-refs": "canary-scan-raw-refs.json",
     "embedded": "canary-scan-embedded.json",
     "stego": "canary-scan-stego.json",
     "uniqueness": "canary-scan-unique-clusters.json",
@@ -28,6 +29,7 @@ STAGE_SHORT_NAMES = {
     "inventory": "Inventory",
     "metadata": "Metadata",
     "remote-refs": "Remote References",
+    "raw-refs": "Raw References",
     "embedded": "Embedded Objects",
     "stego": "Steganography",
     "uniqueness": "Uniqueness & Fingerprints",
@@ -37,6 +39,7 @@ STAGE_DESCRIPTIONS = {
     "inventory": "Inventory (walks filesystem, hashes, identifies MIME types, and classifies files)",
     "metadata": "Metadata (extracts metadata via exiftool, scans for URLs/PII)",
     "remote-refs": "Remote References (scans for XXE, tracking links, external relations)",
+    "raw-refs": "Raw References (regex scan of audio/video/plain-text files with no structured per-format parser)",
     "embedded": "Embedded Objects (extracts nested binaries, raster images, OLE/ActiveX)",
     "stego": "Steganography (scans images for steganographic carriers & cracked passphrases)",
     "uniqueness": "Uniqueness & Fingerprints (clusters near-duplicates to find per-recipient canaries)",
@@ -278,6 +281,7 @@ class StageName(str, Enum):
     inventory = "inventory"
     metadata = "metadata"
     remote_refs = "remote-refs"
+    raw_refs = "raw-refs"
     embedded = "embedded"
     stego = "stego"
     uniqueness = "uniqueness"

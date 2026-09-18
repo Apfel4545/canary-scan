@@ -169,6 +169,16 @@ class RemoteRefsStage(Stage):
         )
 
 
+@StageRegistry.register("raw-refs")
+class RawRefsStage(Stage):
+    def run(self, ctx: PipelineContext) -> None:
+        from canary_scan.scanners.raw_refs import run as run_raw_refs
+
+        if not ctx.inventory:
+            ctx.inventory.extend(_load_inventory(ctx.outdir, ctx.logger))
+        run_raw_refs(ctx.inventory, ctx.outdir, ctx.logger, ctx.workers)
+
+
 @StageRegistry.register("embedded")
 class EmbeddedStage(Stage):
     def run(self, ctx: PipelineContext) -> None:
