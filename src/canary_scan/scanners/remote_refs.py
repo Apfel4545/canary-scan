@@ -317,23 +317,34 @@ def c_pdf(rec: FileRecord, logger: RunLogger) -> list[Finding]:
                     "/RichMedia",
                 )
             ):
-                findings.append(
-                    Finding.from_file_record(
-                        rec,
-                        "remote-refs",
-                        "javascript"
-                        if "/JS" in line or "/JavaScript" in line
-                        else "open_action"
-                        if "/OpenAction" in line or "/AA" in line
-                        else "active_url",
-                        line.split()[0] if line else "",
-                        f"PDF contains suspicious element: {line}",
-                        line,
-                        "pdfid",
-                        Severity.HIGH if "/JS" in line else Severity.CRITICAL,
-                        0.8,
+                # pdfid prints one line per tracked keyword unconditionally, count 0
+                # included -- mirror the /Encrypt branch above and only report when
+                # the count is actually > 0, otherwise this fires for every PDF.
+                parts = line.split()
+                count = None
+                if len(parts) >= 2:
+                    try:
+                        count = int(parts[1])
+                    except ValueError:
+                        count = None
+                if count:
+                    findings.append(
+                        Finding.from_file_record(
+                            rec,
+                            "remote-refs",
+                            "javascript"
+                            if "/JS" in line or "/JavaScript" in line
+                            else "open_action"
+                            if "/OpenAction" in line or "/AA" in line
+                            else "active_url",
+                            line.split()[0] if line else "",
+                            f"PDF contains suspicious element: {line}",
+                            line,
+                            "pdfid",
+                            Severity.HIGH if "/JS" in line else Severity.CRITICAL,
+                            0.8,
+                        )
                     )
-                )
 
     for search_term in ("/URI", "/Launch", "/GoToR", "/AcroForm", "/OCProperties", "/OCG", "/Sig"):
         result = safe_subprocess(
