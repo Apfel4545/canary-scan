@@ -25,6 +25,8 @@ BENIGN_DOMAINS = {
     "xml.org",
     "sf.net",  # lame.sf.net: LAME encoder homepage, embedded by default in the ID3
     # "Encoder" tag of virtually every LAME-encoded MP3 -- not a tracking link.
+    "adobe.com",  # ns.adobe.com/*: XMP namespace identifiers present in virtually every
+    # PDF with XMP metadata -- conventional RDF/XML namespace URIs, never dereferenced.
 }
 
 SEVERITY_RANK_ORDER = ["critical", "high", "medium", "low", "info"]
