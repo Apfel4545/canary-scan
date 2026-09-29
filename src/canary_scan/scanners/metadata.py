@@ -205,6 +205,8 @@ def _process_record(rec: FileRecord, logger: RunLogger) -> tuple[str, dict | Non
                     )
 
         for key, value in fields.items():
+            if value is None or (isinstance(value, str) and not value.strip()):
+                continue
             # exiftool -G prefixes every key with its group ("XMP:Author", "ID3:Comment",
             # "PDF:Producer", ...). PII_FIELDS/SUSPICIOUS_FIELDS/URL_PATTERN_FIELDS list bare
             # tag names, so matching against `key` directly almost never fired -- confirmed via
