@@ -90,15 +90,14 @@ def _scan_raw_refs_text(rec: FileRecord, text: str) -> list[Finding]:
     return findings
 
 
-def _read_scan_regions(path: str) -> str:
+def _read_scan_regions(path: str) -> bytes:
     """Read the whole file (small files) or just head+tail chunks (large
-    files), decoded permissively so embedded ASCII URLs can still be found
-    inside otherwise-binary content."""
+    files) as raw bytes, so the caller can try more than one decoding."""
     try:
         p = Path(path)
         size = p.stat().st_size
         if size == 0:
-            return ""
+            return b""
         with open(path, "rb") as f:
             if size <= SMALL_FILE_THRESHOLD:
                 raw = f.read()
@@ -110,17 +109,30 @@ def _read_scan_regions(path: str) -> str:
                 # cutoff could otherwise merge with whatever the tail happens to start
                 # with, producing a bogus "URL" that never existed in the file.
                 raw = head + b"\x00" + tail
-        return raw.decode("utf-8", errors="replace")
+        return raw
     except OSError:
-        return ""
+        return b""
 
 
 def _process_raw_refs_record(rec: FileRecord, logger: RunLogger) -> list[Finding]:
     try:
-        text = _read_scan_regions(rec.path)
-        if not text:
+        raw = _read_scan_regions(rec.path)
+        if not raw:
             return []
-        return _scan_raw_refs_text(rec, text)
+        # Two passes, not one: ID3v2/MP4 text frames may be Latin-1/UTF-8 (one byte per
+        # character) or UTF-16 (two bytes per character, e.g. "h\x00t\x00t\x00p\x00...").
+        # Decoding UTF-16 content as UTF-8 hits a NUL after every character and gets cut
+        # by _truncate_at_binary_noise before "https?://" can even match -- a real URL
+        # in a UTF-16 frame would otherwise be silently missed entirely, not just
+        # truncated. Decoding the same bytes as UTF-16LE recovers those; decoding actual
+        # single-byte text as UTF-16LE instead produces unmatchable noise, so running
+        # both passes and merging is safe -- neither pass can suppress a finding the
+        # other would make, only add ones the other misses.
+        findings = _scan_raw_refs_text(rec, raw.decode("utf-8", errors="replace"))
+        findings_utf16 = _scan_raw_refs_text(rec, raw.decode("utf-16-le", errors="replace"))
+        seen = {f.evidence for f in findings}
+        findings.extend(f for f in findings_utf16 if f.evidence not in seen)
+        return findings
     except Exception as e:
         logger.log(f"Stage raw-refs: error on {rec.path}: {e}")
         return [make_info_finding(rec, "raw-refs", f"raw-refs stage error: {e}")]
